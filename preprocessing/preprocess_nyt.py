@@ -28,7 +28,7 @@ def main(args):
     with open(args.dataset_dir + "/%s/keywords.json" % topic_name, "w") as f:
         f.write(json.dumps(keyword))
     file = jsonlines.open(args.dataset_dir + "/%s/articles.jsonl" % topic_name, "w")
-    for year in tqdm(range(1987, 2008)):
+    for year in tqdm(range(2006, 2008)):
         df = pd.read_csv(NYT_DATA_PATH + "/%s.csv" % year, low_memory=False)
         for row in df[["Publication Date", "Slug", "Article Abstract"]].iterrows():
             try:

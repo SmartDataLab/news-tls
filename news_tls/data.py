@@ -18,20 +18,21 @@ def load_dataset(path):
 
 
 def load_article(article_dict):
-    sentences = [load_sentence(x) for x in article_dict['sentences']]
-    if article_dict.get('title_sentence'):
-        title_sentence = load_sentence(article_dict['title_sentence'])
+    sentences = [load_sentence(x) for x in article_dict["sentences"]]
+    if article_dict.get("title_sentence"):
+        title_sentence = load_sentence(article_dict["title_sentence"])
         title_sentence.is_title = True
     else:
         title_sentence = None
     fix_dependency_heads(sentences)
-    time = arrow.get(article_dict['time']).datetime
+    time = arrow.get(article_dict["time"]).datetime
     time = time.replace(tzinfo=None)
+
     return Article(
-        article_dict['title'],
-        article_dict['text'],
+        article_dict["title"],
+        article_dict["text"],
         time,
-        article_dict['id'],
+        article_dict["id"],
         sentences,
         title_sentence,
     )
@@ -39,35 +40,29 @@ def load_article(article_dict):
 
 def load_sentence(sent_dict):
 
-    tokens = load_tokens(sent_dict['tokens'])
-    pub_time = utils.strip_to_date(arrow.get(sent_dict['pub_time']))
+    tokens = load_tokens(sent_dict["tokens"])
+    pub_time = utils.strip_to_date(arrow.get(sent_dict["pub_time"]))
     time = Sentence.get_time(tokens)
     time_level = None
     if time:
         time = arrow.get(time)
         time_format = Sentence.get_time_format(tokens)
         time_level = None
-        if 'd' in time_format:
+        if "d" in time_format:
             time = datetime.datetime(time.year, time.month, time.day)
-            time_level = 'd'
-        elif ('m' in time_format) or ('y' in time_format):
-            if 'm' in time_format:
-                start, end = time.span('month')
-                time_level = 'm'
+            time_level = "d"
+        elif ("m" in time_format) or ("y" in time_format):
+            if "m" in time_format:
+                start, end = time.span("month")
+                time_level = "m"
             else:
-                start, end = time.span('year')
-                time_level = 'y'
+                start, end = time.span("year")
+                time_level = "y"
             start = datetime.datetime(start.year, start.month, start.day)
             end = datetime.datetime(end.year, end.month, end.day)
             time = (start, end)
 
-    return Sentence(
-        sent_dict['raw'],
-        tokens,
-        pub_time,
-        time,
-        time_level
-    )
+    return Sentence(sent_dict["raw"], tokens, pub_time, time, time_level)
 
 
 def load_tokens(tokens_dict):
@@ -75,15 +70,15 @@ def load_tokens(tokens_dict):
     tokens = []
     for token_ in token_dicts:
         token = Token(
-            token_['raw'],
-            token_['lemma'],
-            token_['pos'],
-            token_['ner_type'],
-            token_['ner_iob'],
-            token_['dep'],
-            token_['head'],
-            token_['time'],
-            token_['time_format']
+            token_["raw"],
+            token_["lemma"],
+            token_["pos"],
+            token_["ner_type"],
+            token_["ner_iob"],
+            token_["dep"],
+            token_["head"],
+            token_["time"],
+            token_["time_format"],
         )
         tokens.append(token)
     return tokens
@@ -101,8 +96,9 @@ def fix_dependency_heads(sentences):
 
 
 class Token:
-    def __init__(self, raw, lemma, pos, ner_type, ner_iob, dep, head, time,
-                 time_format):
+    def __init__(
+        self, raw, lemma, pos, ner_type, ner_iob, dep, head, time, time_format
+    ):
         self.raw = raw
         self.lemma = lemma
         self.pos = pos
@@ -116,15 +112,15 @@ class Token:
     def to_dict(self):
         time = self.time.isoformat() if self.time else None
         return {
-            'raw': self.raw,
-            'lemma': self.lemma,
-            'pos': self.pos,
-            'ner_type': self.ner_type,
-            'ner_iob': self.ner_iob,
-            'dep': self.dep,
-            'head': self.head,
-            'time': time,
-            'time_format': self.time_format
+            "raw": self.raw,
+            "lemma": self.lemma,
+            "pos": self.pos,
+            "ner_type": self.ner_type,
+            "ner_iob": self.ner_iob,
+            "dep": self.dep,
+            "head": self.head,
+            "time": time,
+            "time_format": self.time_format,
         }
 
 
@@ -132,11 +128,11 @@ class Sentence:
     def __init__(self, raw, tokens, pub_time, time, time_level, is_title=False):
         self.raw = raw
         self.tokens = tokens
+        self.article_id = None
         self.pub_time = pub_time
         self.time = time
         self.time_level = time_level
         self.is_title = is_title
-
 
     @staticmethod
     def get_time(tokens):
@@ -153,19 +149,20 @@ class Sentence:
         return None
 
     def get_date(self):
-        if self.time_level == 'd':
+        if self.time_level == "d":
             return self.time.date()
         else:
             return None
 
     def clean_tokens(self):
         tokens = [tok.raw.lower() for tok in self.tokens]
-        tokens = [tok for tok in tokens if
-                  (tok not in STOP_WORDS and tok not in PUNCT_SET)]
+        tokens = [
+            tok for tok in tokens if (tok not in STOP_WORDS and tok not in PUNCT_SET)
+        ]
         return tokens
 
     def _group_entity(self, entity_tokens):
-        surface_form = ' '.join([tok_.raw for tok_ in entity_tokens])
+        surface_form = " ".join([tok_.raw for tok_ in entity_tokens])
         type = entity_tokens[-1].ner_type
         return surface_form, type
 
@@ -174,12 +171,12 @@ class Sentence:
         tmp_entity = []
         other = []
         for tok in self.tokens:
-            if tok.ner_iob == 'B':
+            if tok.ner_iob == "B":
                 if len(tmp_entity) > 0:
                     e = self._group_entity(tmp_entity)
                     entities.append(e)
                 tmp_entity = [tok]
-            elif tok.ner_iob == 'I':
+            elif tok.ner_iob == "I":
                 tmp_entity.append(tok)
             else:
                 other.append(tok)
@@ -202,24 +199,21 @@ class Sentence:
         tokens = compress_dict_list(tokens)
 
         return {
-            'raw': self.raw,
-            'tokens': tokens,
-            'time': time,
-            'pub_time': self.pub_time.isoformat(),
+            "raw": self.raw,
+            "tokens": tokens,
+            "time": time,
+            "pub_time": self.pub_time.isoformat(),
         }
 
+
 class Article:
-    '''
+    """
     Stores information about a news article.
-    '''
-    def __init__(self,
-                 title,
-                 text,
-                 time,
-                 id,
-                 sentences=None,
-                 title_sentence=None,
-                 vector=None):
+    """
+
+    def __init__(
+        self, title, text, time, id, sentences=None, title_sentence=None, vector=None
+    ):
         self.title = title
         self.text = text
         self.time = time
@@ -227,6 +221,8 @@ class Article:
         self.sentences = sentences
         self.title_sentence = title_sentence
         self.vector = vector
+        for i in range(len(self.sentences)):
+            self.sentences[i].article_id = self.id
 
     def to_dict(self):
 
@@ -235,18 +231,17 @@ class Article:
             title_sent_dict = self.title_sentence.to_dict()
 
         return {
-            'title': self.title,
-            'text': self.text,
-            'time': str(self.time),
-            'id': self.id,
-            'sentences': [s.to_dict() for s in self.sentences],
-            'title_sentence': title_sent_dict,
-            'vector': self.vector
+            "title": self.title,
+            "text": self.text,
+            "time": str(self.time),
+            "id": self.id,
+            "sentences": [s.to_dict() for s in self.sentences],
+            "title_sentence": title_sent_dict,
+            "vector": self.vector,
         }
 
 
 class Dataset:
-
     def __init__(self, path):
         self.path = pathlib.Path(path)
         self.topics = self._get_topics()
@@ -268,14 +263,14 @@ class ArticleCollection:
     def __init__(self, path, start=None, end=None):
         self.name = os.path.basename(path)
         self.path = pathlib.Path(path)
-        self.keywords = utils.read_json(self.path / 'keywords.json')
+        self.keywords = utils.read_json(self.path / "keywords.json")
         self.timelines = self._load_timelines()
         self.start = start
         self.end = end
 
     def _load_timelines(self):
         timelines = []
-        path = self.path / 'timelines.jsonl'
+        path = self.path / "timelines.jsonl"
         if not path.exists():
             return []
         for raw_tl in utils.read_jsonl(path):
@@ -289,8 +284,8 @@ class ArticleCollection:
         return timelines
 
     def articles(self):
-        path1 = self.path / 'articles.preprocessed.jsonl'
-        path2 = self.path / 'articles.preprocessed.jsonl.gz'
+        path1 = self.path / "articles.preprocessed.jsonl"
+        path2 = self.path / "articles.preprocessed.jsonl.gz"
         if path1.exists():
             articles = utils.read_jsonl(path1)
         else:
@@ -305,7 +300,7 @@ class ArticleCollection:
             yield a
 
     def time_batches(self):
-        articles = utils.read_jsonl_gz(self.path / 'articles.preprocessed.jsonl.gz')
+        articles = utils.read_jsonl_gz(self.path / "articles.preprocessed.jsonl.gz")
         time = None
         batch = []
         for a_ in articles:
@@ -328,10 +323,10 @@ class ArticleCollection:
         yield time, batch
 
     def times(self):
-        articles = utils.read_jsonl(self.path / 'articles.preprocessed.jsonl')
+        articles = utils.read_jsonl(self.path / "articles.preprocessed.jsonl")
         times = []
         for a in articles:
-            t = arrow.get(a['time']).datetime
+            t = arrow.get(a["time"]).datetime
             t = t.replace(tzinfo=None)
             times.append(t)
         return times
@@ -356,11 +351,11 @@ class Timeline:
     def __str__(self):
         lines = []
         for t, summary in self.items:
-            lines.append('[{}]'.format(t.date()))
+            lines.append("[{}]".format(t.date()))
             for sent in summary:
                 lines.append(sent)
-            lines.append('-'*50)
-        return '\n'.join(lines)
+            lines.append("-" * 50)
+        return "\n".join(lines)
 
     def to_dict(self):
         items = [(str(t), s) for (t, s) in self.items]
@@ -373,16 +368,13 @@ def compress_dict_list(dicts):
     for d in dicts:
         values = [d[k] for k in keys]
         data.append(values)
-    return {
-        'keys': keys,
-        'data': data
-    }
+    return {"keys": keys, "data": data}
 
 
 def decompress_dict_list(x):
     dicts = []
-    keys = x['keys']
-    for values in x['data']:
+    keys = x["keys"]
+    for values in x["data"]:
         d = dict(zip(keys, values))
         dicts.append(d)
     return dicts

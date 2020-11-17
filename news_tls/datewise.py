@@ -12,41 +12,46 @@ from news_tls import data, utils, summarizers
 random.seed(42)
 
 
-class DatewiseTimelineGenerator():
-    def __init__(self,
-                 date_ranker=None,
-                 summarizer=None,
-                 sent_collector=None,
-                 clip_sents=5,
-                 pub_end=2,
-                 key_to_model=None):
+class DatewiseTimelineGenerator:
+    def __init__(
+        self,
+        date_ranker=None,
+        summarizer=None,
+        sent_collector=None,
+        clip_sents=5,
+        pub_end=2,
+        key_to_model=None,
+    ):
 
         self.date_ranker = date_ranker or MentionCountDateRanker()
         self.sent_collector = sent_collector or PM_Mean_SentenceCollector(
-            clip_sents, pub_end)
+            clip_sents, pub_end
+        )
         self.summarizer = summarizer or summarizers.CentroidOpt()
         self.key_to_model = key_to_model
 
-    def predict(self,
-                collection,
-                max_dates=10,
-                max_summary_sents=1,
-                ref_tl=None,
-                input_titles=False,
-                output_titles=False,
-                output_body_sents=True):
-        print('vectorizer...')
-        vectorizer = TfidfVectorizer(stop_words='english', lowercase=True)
+    def predict(
+        self,
+        collection,
+        max_dates=10,
+        max_summary_sents=1,
+        ref_tl=None,
+        input_titles=False,
+        output_titles=False,
+        output_body_sents=True,
+    ):
+        print("vectorizer...")
+        vectorizer = TfidfVectorizer(stop_words="english", lowercase=True)
         vectorizer.fit([s.raw for a in collection.articles() for s in a.sentences])
 
-        print('date ranking...')
+        print("date ranking...")
         ranked_dates = self.date_ranker.rank_dates(collection)
 
         start = collection.start.date()
         end = collection.end.date()
         ranked_dates = [d for d in ranked_dates if start <= d <= end]
 
-        print('candidates & summarization...')
+        print("candidates & summarization...")
         dates_with_sents = self.sent_collector.collect_sents(
             ranked_dates,
             collection,
@@ -75,26 +80,30 @@ class DatewiseTimelineGenerator():
                 break
 
             summary = self.summarizer.summarize(
-                d_sents,
-                k=max_summary_sents,
-                vectorizer=vectorizer,
-                filter=sent_filter
+                d_sents, k=max_summary_sents, vectorizer=vectorizer, filter=sent_filter
             )
+            if len(summary) == 0:
+                summary = [""]
+                sent_id = None
+            else:
+                sent_id = [sent.raw for sent in d_sents].index(summary[0])
+                sent_id = d_sents[sent_id].article_id
             if summary:
                 time = datetime.datetime(d.year, d.month, d.day)
-                timeline.append((time, summary))
+                timeline.append((time, ["%s : " % sent_id + summary[0]]))
                 l += 1
 
         timeline.sort(key=lambda x: x[0])
         return data.Timeline(timeline)
 
     def load(self, ignored_topics):
-        key = ' '.join(sorted(ignored_topics))
+        key = " ".join(sorted(ignored_topics))
         if self.key_to_model:
             self.date_ranker.model = self.key_to_model[key]
 
 
 ################################ DATE RANKING ##################################
+
 
 class DateRanker:
     def rank_dates(self, collection, date_buckets):
@@ -129,19 +138,19 @@ class PubCountDateRanker(DateRanker):
 
 
 class SupervisedDateRanker(DateRanker):
-    def __init__(self, model=None, method='classification'):
+    def __init__(self, model=None, method="classification"):
         self.model = model
         self.method = method
-        if method not in ['classification', 'regression']:
-            raise ValueError('method must be classification or regression')
+        if method not in ["classification", "regression"]:
+            raise ValueError("method must be classification or regression")
 
     def rank_dates(self, collection):
         dates, X = self.extract_features(collection)
-        X = normalize(X, norm='l2', axis=0)
-        if self.method == 'classification':
-            Y = [y[1] for y in self.model['model'].predict_proba(X)]
+        X = normalize(X, norm="l2", axis=0)
+        if self.method == "classification":
+            Y = [y[1] for y in self.model["model"].predict_proba(X)]
         else:
-            Y = self.model['model'].predict(X)
+            Y = self.model["model"].predict(X)
         scored = sorted(zip(dates, Y), key=lambda x: x[1], reverse=True)
         ranked = [x[0] for x in scored]
         # for d, score in scored[:16]:
@@ -154,13 +163,13 @@ class SupervisedDateRanker(DateRanker):
         X = []
         for d in dates:
             feats = [
-                date_to_stats[d]['sents_total'],
-                date_to_stats[d]['sents_before'],
-                date_to_stats[d]['sents_after'],
-                date_to_stats[d]['docs_total'],
-                date_to_stats[d]['docs_before'],
-                date_to_stats[d]['docs_after'],
-                date_to_stats[d]['docs_published'],
+                date_to_stats[d]["sents_total"],
+                date_to_stats[d]["sents_before"],
+                date_to_stats[d]["sents_after"],
+                date_to_stats[d]["docs_total"],
+                date_to_stats[d]["docs_before"],
+                date_to_stats[d]["docs_after"],
+                date_to_stats[d]["docs_published"],
             ]
             X.append(np.array(feats))
         X = np.array(X)
@@ -168,39 +177,39 @@ class SupervisedDateRanker(DateRanker):
 
     def extract_date_statistics(self, collection):
         default = lambda: {
-            'sents_total': 0,
-            'sents_same_day': 0,
-            'sents_before': 0,
-            'sents_after': 0,
-            'docs_total': 0,
-            'docs_same_day': 0,
-            'docs_before': 0,
-            'docs_after': 0,
-            'docs_published': 0
+            "sents_total": 0,
+            "sents_same_day": 0,
+            "sents_before": 0,
+            "sents_after": 0,
+            "docs_total": 0,
+            "docs_same_day": 0,
+            "docs_before": 0,
+            "docs_after": 0,
+            "docs_published": 0,
         }
         date_to_feats = collections.defaultdict(default)
         for a in collection.articles():
             pub_date = a.time.date()
             mentioned_dates = []
             for s in a.sentences:
-                if s.time and s.time_level == 'd':
+                if s.time and s.time_level == "d":
                     d = s.time.date()
-                    date_to_feats[d]['sents_total'] += 1
+                    date_to_feats[d]["sents_total"] += 1
                     if d < pub_date:
-                        date_to_feats[d]['sents_before'] += 1
+                        date_to_feats[d]["sents_before"] += 1
                     elif d > pub_date:
-                        date_to_feats[d]['sents_after'] += 1
+                        date_to_feats[d]["sents_after"] += 1
                     else:
-                        date_to_feats[d]['sents_same_day'] += 1
+                        date_to_feats[d]["sents_same_day"] += 1
                     mentioned_dates.append(d)
             for d in sorted(set(mentioned_dates)):
-                date_to_feats[d]['docs_total'] += 1
+                date_to_feats[d]["docs_total"] += 1
                 if d < pub_date:
-                    date_to_feats[d]['docs_before'] += 1
+                    date_to_feats[d]["docs_before"] += 1
                 elif d > pub_date:
-                    date_to_feats[d]['docs_after'] += 1
+                    date_to_feats[d]["docs_after"] += 1
                 else:
-                    date_to_feats[d]['docs_same_day'] += 1
+                    date_to_feats[d]["docs_same_day"] += 1
         return date_to_feats
 
 
@@ -236,7 +245,7 @@ class P_SentenceCollector:
                     pub_date2 = pub_date - datetime.timedelta(days=k)
                     if a.title_sentence:
                         date_to_pub[pub_date2].append(a.title_sentence)
-            for s in a.sentences[:self.clip_sents]:
+            for s in a.sentences[: self.clip_sents]:
                 for k in range(self.pub_end):
                     pub_date2 = pub_date - datetime.timedelta(days=k)
                     date_to_pub[pub_date2].append(s)
@@ -282,10 +291,10 @@ class PM_Mean_SentenceCollector:
         self.pub_end = pub_end
 
     def collect_sents(self, ranked_dates, collection, vectorizer, include_titles):
-        date_to_pub, date_to_ment = self._first_pass(
-            collection, include_titles)
+        date_to_pub, date_to_ment = self._first_pass(collection, include_titles)
         for d, sents in self._second_pass(
-            ranked_dates, date_to_pub, date_to_ment, vectorizer):
+            ranked_dates, date_to_pub, date_to_ment, vectorizer
+        ):
             yield d, sents
 
     def _first_pass(self, collection, include_titles):
@@ -323,7 +332,7 @@ class PM_Mean_SentenceCollector:
                 C_pub = sparse.csr_matrix(X_pub.sum(0))
                 ment_weight = 1 / len(ment_sents)
                 pub_weight = 1 / len(pub_sents)
-                C_mean = (ment_weight * C_ment + pub_weight * C_pub)
+                C_mean = ment_weight * C_ment + pub_weight * C_pub
                 _, indices = C_mean.nonzero()
 
                 C_date = sparse.lil_matrix(C_ment.shape)
@@ -372,8 +381,7 @@ def detect_knee_point(values):
     line_vec = all_coords[-1] - all_coords[0]
     line_vec_norm = line_vec / np.sqrt(np.sum(line_vec ** 2))
     vec_from_first = all_coords - first_point
-    scalar_prod = np.sum(
-        vec_from_first * np.tile(line_vec_norm, (n_points, 1)), axis=1)
+    scalar_prod = np.sum(vec_from_first * np.tile(line_vec_norm, (n_points, 1)), axis=1)
     vec_from_first_parallel = np.outer(scalar_prod, line_vec_norm)
     vec_to_line = vec_from_first - vec_from_first_parallel
     # distance to line is the norm of vec_to_line
