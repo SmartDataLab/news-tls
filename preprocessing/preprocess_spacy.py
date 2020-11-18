@@ -15,20 +15,24 @@ from pprint import pprint
 def extract_time_tag_value(time_tag):
     value = [(None, None)]
 
-    if 'type' not in time_tag.attrib:
+    if "type" not in time_tag.attrib:
         return value
-    elif time_tag.attrib['type'] == 'DATE':
-        formats = ['%Y-%m-%d', '%Y-%m', '%Y']
-    elif time_tag.attrib['type'] == 'TIME':
-        formats = ['%Y-%m-%dT%H:%M', '%Y-%m-%dTMO', '%Y-%m-%dTEV',
-                   '%Y-%m-%dTNI', '%Y-%m-%dTAF']
+    elif time_tag.attrib["type"] == "DATE":
+        formats = ["%Y-%m-%d", "%Y-%m", "%Y"]
+    elif time_tag.attrib["type"] == "TIME":
+        formats = [
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%dTMO",
+            "%Y-%m-%dTEV",
+            "%Y-%m-%dTNI",
+            "%Y-%m-%dTAF",
+        ]
     else:
         return value
 
     for format in formats:
         try:
-            time = datetime.datetime.strptime(
-                time_tag.attrib['value'], format)
+            time = datetime.datetime.strptime(time_tag.attrib["value"], format)
             value = [(time, format)]
         except:
             pass
@@ -76,14 +80,14 @@ def parse_timeml_doc(raw):
 def read_articles(articles, tmp_dir):
     date_to_articles = collections.defaultdict(list)
     for a in articles:
-        date = arrow.get(a['time']).date()
+        date = arrow.get(a["time"]).date()
         date_to_articles[date].append(a)
     for date in sorted(date_to_articles):
         date_articles = date_to_articles[date]
         for a in date_articles:
-            fpath = tmp_dir / str(date) / '{}.txt.timeml'.format(a['id'])
+            fpath = tmp_dir / str(date) / "{}.txt.timeml".format(a["id"])
             if os.path.exists(fpath):
-                with codecs.open(fpath, 'r', encoding='utf-8') as f:
+                with codecs.open(fpath, "r", encoding="utf-8") as f:
                     raw = f.read()
                 yield a, raw
 
@@ -136,18 +140,18 @@ def preprocess_article(old_article, timeml_raw, nlp):
 
     sentence_objects = []
     for sent in doc.sents:
-        sent_tokens = token_objects[sent.start:sent.end]
+        sent_tokens = token_objects[sent.start : sent.end]
         times = [tok.time for tok in sent_tokens if tok.time]
         if times:
             time = times[0]
         else:
             time = None
 
-        pub_time = arrow.get(old_article['time'])
+        pub_time = arrow.get(old_article["time"])
         sent_object = Sentence(str(sent), sent_tokens, pub_time, time, None)
         sentence_objects.append(sent_object)
 
-    raw_title = old_article.get('title')
+    raw_title = old_article.get("title")
     if raw_title:
         title_object = preprocess_title(raw_title, pub_time, nlp)
     else:
@@ -155,11 +159,13 @@ def preprocess_article(old_article, timeml_raw, nlp):
 
     new_article = Article(
         title=raw_title,
-        text=old_article['text'],
-        time=old_article['time'],
-        id=old_article.get('id'),
+        text=old_article["text"],
+        time=old_article["time"],
+        id=old_article.get("id"),
+        taxo=old_article["taxo"],
+        page=old_article["page"],
         sentences=sentence_objects,
-        title_sentence=title_object
+        title_sentence=title_object,
     )
     return new_article
 
@@ -167,12 +173,12 @@ def preprocess_article(old_article, timeml_raw, nlp):
 def preprocess_dataset(root, nlp):
 
     for topic in sorted(os.listdir(root)):
-        print('TOPIC:', topic)
+        print("TOPIC:", topic)
 
-        article_path = root / topic / 'articles.tokenized.jsonl.gz'
+        article_path = root / topic / "articles.tokenized.jsonl.gz"
         articles = utils.read_jsonl_gz(article_path)
-        h_output_dir = root / topic / 'time_annotated'
-        out_path = root / topic / 'articles.preprocessed.jsonl'
+        h_output_dir = root / topic / "time_annotated"
+        out_path = root / topic / "articles.preprocessed.jsonl"
         out_batch = []
         i = 0
 
@@ -182,11 +188,11 @@ def preprocess_dataset(root, nlp):
             if a:
                 out_batch.append(a.to_dict())
             else:
-                date = arrow.get(old_a['time']).date()
-                print('cannot process:', date, old_a['id'])
+                date = arrow.get(old_a["time"]).date()
+                print("cannot process:", date, old_a["id"])
 
             if i % 100 == 0:
-                print('writing batch,', i, 'articles done')
+                print("writing batch,", i, "articles done")
                 if i == 0:
                     utils.write_jsonl(out_batch, out_path, override=True)
                 else:
@@ -195,20 +201,20 @@ def preprocess_dataset(root, nlp):
             i += 1
 
         utils.write_jsonl(out_batch, out_path, override=False)
-        gz_path = str(out_path) + '.gz'
+        gz_path = str(out_path) + ".gz"
         utils.gzip_file(inpath=out_path, outpath=gz_path, delete_old=True)
 
 
 def main(args):
     dataset_dir = pathlib.Path(args.dataset)
     if not dataset_dir.exists():
-        raise FileNotFoundError('dataset not found')
+        raise FileNotFoundError("dataset not found")
     nlp = spacy.load(args.spacy_model)
     preprocess_dataset(dataset_dir, nlp)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', required=True, help='dataset directory')
-    parser.add_argument('--spacy-model', default='en_core_web_sm')
+    parser.add_argument("--dataset", required=True, help="dataset directory")
+    parser.add_argument("--spacy-model", default="en_core_web_sm")
     main(parser.parse_args())

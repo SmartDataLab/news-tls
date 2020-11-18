@@ -30,7 +30,15 @@ def main(args):
     file = jsonlines.open(args.dataset_dir + "/%s/articles.jsonl" % topic_name, "w")
     for year in tqdm(range(2006, 2008)):
         df = pd.read_csv(NYT_DATA_PATH + "/%s.csv" % year, low_memory=False)
-        for row in df[["Publication Date", "Slug", "Article Abstract"]].iterrows():
+        for row in df[
+            [
+                "Publication Date",
+                "Slug",
+                "Article Abstract",
+                "Page",
+                "Taxonomic Classifiers",
+            ]
+        ].iterrows():
             try:
                 query = not keywords.isdisjoint(
                     get_clean_words_set_from_abstract(row[1]["Article Abstract"]).split(
@@ -49,6 +57,8 @@ def main(args):
                         + row[1]["Slug"],
                         "time": row[1]["Publication Date"],
                         "text": row[1]["Article Abstract"],
+                        "taxo": row[1]["Taxonomic Classifiers"],
+                        "page": row[1]["Page"],
                     },
                 )
     file.close()

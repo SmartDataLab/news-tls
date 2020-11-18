@@ -23,7 +23,9 @@ class DatewiseTimelineGenerator:
         key_to_model=None,
     ):
 
-        self.date_ranker = date_ranker or MentionCountDateRanker()
+        self.date_ranker = (
+            date_ranker or MentionCountDateRanker()
+        )  # if date_ranker is None, use new instance
         self.sent_collector = sent_collector or PM_Mean_SentenceCollector(
             clip_sents, pub_end
         )
@@ -86,11 +88,24 @@ class DatewiseTimelineGenerator:
                 summary = [""]
                 sent_id = None
             else:
-                sent_id = [sent.raw for sent in d_sents].index(summary[0])
-                sent_id = d_sents[sent_id].article_id
+                idx = [sent.raw for sent in d_sents].index(summary[0])
+
             if summary:
                 time = datetime.datetime(d.year, d.month, d.day)
-                timeline.append((time, ["%s : " % sent_id + summary[0]]))
+                timeline.append(
+                    (
+                        time,
+                        [
+                            "%s : %s : %s :"
+                            % (
+                                d_sents[idx].article_id,
+                                d_sents[idx].article_taxo,
+                                d_sents[idx].article_page,
+                            )
+                            + summary[0]
+                        ],
+                    )
+                )
                 l += 1
 
         timeline.sort(key=lambda x: x[0])
