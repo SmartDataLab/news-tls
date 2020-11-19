@@ -84,28 +84,26 @@ class ClusteringTimelineGenerator:
         for c in ranked_clusters:
 
             date = c.time.date()
-            c_sents, c_sents_id = self._select_sents_from_cluster(c)
-            # print("C", date, len(c_sents), "M", sys_m, "L", sys_l)
+            c_sents = self._select_sents_from_cluster(c)
 
             summary = self.summarizer.summarize(
                 c_sents, k=max_summary_sents, vectorizer=vectorizer, filter=sent_filter
             )
 
-            c_sents_raw = [s.raw for s in c_sents]
-            # if c_sents_raw.index(summary[0]) >= len(c_sents_id):
-            #     print(c_sents_id)
-            #     print(summary)
-            #     print(c_sents_raw)
             if summary:
-                print(summary)
-                sent_id = c_sents_id[c_sents_raw.index(summary[0])]
-
-            if len(summary) > 1:
-                print(summary)
-            if summary:
+                c_sents_raw = [s.raw for s in c_sents]
+                idx = c_sents_raw.index(summary[0])
                 if self.unique_dates and date in date_to_summary:
                     continue
-                date_to_summary[date] += [sent_id + " : " + summary[0]]
+                date_to_summary[date] += [
+                    "%s : %s : %s : "
+                    % (
+                        c_sents[idx].article_id,
+                        c_sents[idx].article_taxo,
+                        c_sents[idx].article_page,
+                    )
+                    + summary[0]
+                ]
                 sys_m += len(summary)
                 if self.unique_dates:
                     sys_l += 1
@@ -123,13 +121,12 @@ class ClusteringTimelineGenerator:
 
     def _select_sents_from_cluster(self, cluster):
         sents = []
-        sents_id = []
         for a in cluster.articles:
             pub_d = a.time.date()
             for s in a.sentences[: self.clip_sents]:
                 sents.append(s)
-                sents_id.append(a.id)
-        return sents, sents_id
+
+        return sents
 
     def load(self, ignored_topics):
         pass
