@@ -50,7 +50,7 @@ class DatewiseTimelineGenerator:
         vectorizer.fit([s.raw for a in collection.articles() for s in a.sentences])
 
         print("date ranking...")
-        ranked_dates = self.date_ranker.rank_dates(collection,plug=self.plug_page)
+        ranked_dates = self.date_ranker.rank_dates(collection, plug=self.plug_page)
 
         start = collection.start.date()
         end = collection.end.date()
@@ -156,7 +156,8 @@ class MentionCountDateRanker(DateRanker):
                         pages_to_count[d] += a.page
         if plug:
             count_dict = {
-                d: pages_to_count[d] / count for d, count in date_to_count.items()
+                d: (count, pages_to_count[d] / count)
+                for d, count in date_to_count.items()
             }
             ranked = plugin.get_combined_1st_rank(
                 count_dict, page_weight=plug, output_one=False
@@ -177,7 +178,8 @@ class PubCountDateRanker(DateRanker):
                 pages_to_count[d] += a.page
         if plug:
             count_dict = {
-                d: pages_to_count[d] / count for d, count in date_to_count.items()
+                d: (count, pages_to_count[d] / count)
+                for d, count in date_to_count.items()
             }
             ranked = plugin.get_combined_1st_rank(
                 count_dict, page_weight=plug, output_one=False
@@ -329,7 +331,7 @@ class P_SentenceCollector:
 
 
 class PM_All_SentenceCollector:
-    def __init__(self, clip_sents=5, pub_end=2):
+    def __init__(self, clip_sents=2, pub_end=2):
         self.clip_sents = clip_sents
         self.pub_end = pub_end
 

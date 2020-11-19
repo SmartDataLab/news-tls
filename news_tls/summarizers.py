@@ -4,6 +4,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from sklearn.cluster import MiniBatchKMeans
 from news_tls import plugin
+import collections
+import numpy as np
 
 
 class Summarizer:

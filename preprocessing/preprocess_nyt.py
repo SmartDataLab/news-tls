@@ -28,7 +28,7 @@ def main(args):
     with open(args.dataset_dir + "/%s/keywords.json" % topic_name, "w") as f:
         f.write(json.dumps(keyword))
     file = jsonlines.open(args.dataset_dir + "/%s/articles.jsonl" % topic_name, "w")
-    for year in tqdm(range(2006, 2008)):
+    for year in tqdm(range(args.start_year, args.end_year)):
         df = pd.read_csv(NYT_DATA_PATH + "/%s.csv" % year, low_memory=False)
         for row in df[
             [
@@ -40,11 +40,18 @@ def main(args):
             ]
         ].iterrows():
             try:
-                query = not keywords.isdisjoint(
-                    get_clean_words_set_from_abstract(row[1]["Article Abstract"]).split(
-                        " "
+                if args.mode == "or":
+                    query = not keywords.isdisjoint(
+                        get_clean_words_set_from_abstract(
+                            row[1]["Article Abstract"]
+                        ).split(" ")
                     )
-                )
+                elif args.mode == "and":
+                    query = keywords.issubset(
+                        get_clean_words_set_from_abstract(
+                            row[1]["Article Abstract"]
+                        ).split(" ")
+                    )
             except:
                 query = False
             # print(type(row))
@@ -70,4 +77,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--keywords", required=True, help="for example 'elon,elon musk,musk' "
     )
+    parser.add_argument("--start_year", default=2006, type=int)
+    parser.add_argument("--end_year", default=2008, type=int)
+    parser.add_argument("--mode", default="or", choices=["or", "and"])
     main(parser.parse_args())

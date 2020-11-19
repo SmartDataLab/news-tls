@@ -1,7 +1,7 @@
 # to process the data from the nyt raw data
 
 ```bash
-python preprocess_nyt.py --dataset_dir ../../../data/datasets/test --keywords apple,jobs
+python preprocess_nyt.py --dataset_dir ../../../data/datasets/test --keywords apple,jobs --mode and --start_year 2006 --end_year 2008
 ```
 We provide the function to find a collection of the document from the specific kewords list and we provide an API for search the document information by parsing the id information.
 

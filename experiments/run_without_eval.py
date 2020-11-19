@@ -45,12 +45,15 @@ def main(args):
         # load regression models for date ranking
         key_to_model = utils.load_pkl(args.model)
         models = list(key_to_model.values())
-        date_ranker = datewise.SupervisedDateRanker(method="regression")
-        # there are multiple models (for cross-validation),
-        # we just an arbitrary model, the first one
-        date_ranker.model = models[0]
-        sent_collector = datewise.PM_Mean_SentenceCollector(clip_sents=2, pub_end=2)
-        summarizer = summarizers.CentroidOpt(plug=args.plug_page)
+        if args.date_ranker == "Supervised":
+            date_ranker = datewise.SupervisedDateRanker(method="regression")
+            # there are multiple models (for cross-validation),
+            # we just an arbitrary model, the first one
+            date_ranker.model = models[0]
+        else:
+            date_ranker = DATE_RANKERS[args.date_ranker]()
+        sent_collector = SENT_COLLECTORS[args.sent_collector]()
+        summarizer = SUMMARIZERS[args.summarizer](plug=args.plug_page)
         system = datewise.DatewiseTimelineGenerator(
             date_ranker=date_ranker,
             summarizer=summarizer,
@@ -61,9 +64,9 @@ def main(args):
         )
 
     elif args.method == "clust":
-        cluster_ranker = clust.ClusterDateMentionCountRanker()
+        cluster_ranker = CLUST_RANKERS[args.clust_ranker]()
         clusterer = clust.TemporalMarkovClusterer()
-        summarizer = summarizers.CentroidOpt(plug=args.plug_page)
+        summarizer = SUMMARIZERS[args.summarizer](plug=args.plug_page)
         system = clust.ClusteringTimelineGenerator(
             cluster_ranker=cluster_ranker,
             clusterer=clusterer,
@@ -78,6 +81,31 @@ def main(args):
 
     run(system, dataset, args.output)
 
+
+CLUST_RANKERS = {
+    "DateMention": clust.ClusterDateMentionCountRanker,
+    "Size": clust.ClusterSizeRanker,
+}
+
+SUMMARIZERS = {
+    "CentroidOpt": summarizers.CentroidOpt,
+    "TextRank": summarizers.TextRank,
+    "CentroidRank": summarizers.CentroidRank,
+    "Submodular": summarizers.SubmodularSummarizer,
+}
+
+DATE_RANKERS = {
+    "Random": datewise.RandomDateRanker,
+    "MentionCount": datewise.MentionCountDateRanker,
+    "PubCount": datewise.PubCountDateRanker,
+    "Supervised": datewise.SupervisedDateRanker,
+}
+
+SENT_COLLECTORS = {
+    "Mention": datewise.M_SentenceCollector,
+    "Publish": datewise.P_SentenceCollector,
+    "PM": datewise.PM_All_SentenceCollector,
+}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -94,6 +122,34 @@ if __name__ == "__main__":
         default=0,
         type=float,
         help="0: do not use, x>0: remove the node that with taxo-distance larger than x",
+    )
+    parser.add_argument(
+        "--clust_ranker",
+        default="DateMention",
+        type=str,
+        choices=["DateMention", "Size"],
+        help="must be one of DateMention, Size",
+    )
+    parser.add_argument(
+        "--date_ranker",
+        default="Supervised",
+        type=str,
+        choices=["Random", "MentionCount", "PubCount", "Supervised"],
+        help="must be one of Random, MentionCount, PubCount, Supervised",
+    )
+    parser.add_argument(
+        "--sent_collector",
+        default="PM",
+        type=str,
+        choices=["PM", "Mention", "Publish"],
+        help="must be one of PM, Mention, Publish",
+    )
+    parser.add_argument(
+        "--summarizer",
+        default="CentroidOpt",
+        type=str,
+        choices=["CentroidOpt", "TextRank", "CentroidRank", "Submodular"],
+        help="must be one of CentroidOpt, TextRank, CentroidRank, Submodular",
     )
     parser.add_argument("--model", default=None, help="model for date ranker")
     parser.add_argument("--output", default=None)
