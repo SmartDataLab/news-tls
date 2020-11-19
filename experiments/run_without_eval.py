@@ -1,8 +1,7 @@
 import argparse
 from pathlib import Path
-from news_tls import utils, data, datewise, clust, summarizers
+from news_tls import utils, data, datewise, clust, summarizers, plugin
 from pprint import pprint
-
 
 
 def run(tls_model, dataset, outpath):
@@ -16,17 +15,16 @@ def run(tls_model, dataset, outpath):
         # setting start, end, L, K manually instead of from ground-truth
         collection.start = min(times)
         collection.end = max(times)
-        l = 8 # timeline length (dates)
-        k = 1 # number of sentences in each summary
+        l = 8  # timeline length (dates)
+        k = 1  # number of sentences in each summary
 
         timeline = tls_model.predict(
             collection,
             max_dates=l,
             max_summary_sents=k,
-
         )
 
-        print('*** TIMELINE ***')
+        print("*** TIMELINE ***")
         utils.print_tl(timeline)
 
         outputs.append(timeline.to_dict())
@@ -39,51 +37,64 @@ def main(args):
 
     dataset_path = Path(args.dataset)
     if not dataset_path.exists():
-        raise FileNotFoundError(f'Dataset not found: {args.dataset}')
+        raise FileNotFoundError(f"Dataset not found: {args.dataset}")
     dataset = data.Dataset(dataset_path)
     dataset_name = dataset_path.name
 
-    if args.method == 'datewise':
+    if args.method == "datewise":
         # load regression models for date ranking
         key_to_model = utils.load_pkl(args.model)
         models = list(key_to_model.values())
-        date_ranker = datewise.SupervisedDateRanker(method='regression')
+        date_ranker = datewise.SupervisedDateRanker(method="regression")
         # there are multiple models (for cross-validation),
         # we just an arbitrary model, the first one
         date_ranker.model = models[0]
-        sent_collector = datewise.PM_Mean_SentenceCollector(
-            clip_sents=2, pub_end=2)
-        summarizer = summarizers.CentroidOpt()
+        sent_collector = datewise.PM_Mean_SentenceCollector(clip_sents=2, pub_end=2)
+        summarizer = summarizers.CentroidOpt(plug=args.plug_page)
         system = datewise.DatewiseTimelineGenerator(
             date_ranker=date_ranker,
             summarizer=summarizer,
             sent_collector=sent_collector,
-            key_to_model = key_to_model
+            key_to_model=key_to_model,
+            plug_page=args.plug_page,
+            plug_taxo=args.plug_taxo,
         )
 
-    elif args.method == 'clust':
+    elif args.method == "clust":
         cluster_ranker = clust.ClusterDateMentionCountRanker()
         clusterer = clust.TemporalMarkovClusterer()
-        summarizer = summarizers.CentroidOpt()
+        summarizer = summarizers.CentroidOpt(plug=args.plug_page)
         system = clust.ClusteringTimelineGenerator(
             cluster_ranker=cluster_ranker,
             clusterer=clusterer,
             summarizer=summarizer,
             clip_sents=2,
             unique_dates=True,
+            plug_page=args.plug_page,
+            plug_taxo=args.plug_taxo,
         )
     else:
-        raise ValueError(f'Method not found: {args.method}')
-
+        raise ValueError(f"Method not found: {args.method}")
 
     run(system, dataset, args.output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', required=True)
-    parser.add_argument('--method', required=True)
-    parser.add_argument('--model', default=None,
-        help='model for date ranker')
-    parser.add_argument('--output', default=None)
+    parser.add_argument("--dataset", required=True)
+    parser.add_argument("--method", required=True)
+    parser.add_argument(
+        "--plug_page",
+        default=False,
+        type=float,
+        help="0: do not use, x>0: weight of page rank",
+    )
+    parser.add_argument(
+        "--plug_taxo",
+        default=0,
+        type=float,
+        help="0: do not use, x>0: remove the node that with taxo-distance larger than x",
+    )
+    parser.add_argument("--model", default=None, help="model for date ranker")
+    parser.add_argument("--output", default=None)
     main(parser.parse_args())

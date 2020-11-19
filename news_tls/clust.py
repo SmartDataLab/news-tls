@@ -8,7 +8,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
 from typing import List
-from news_tls import utils, data
+from news_tls import utils, data, plugin
 
 
 class ClusteringTimelineGenerator:
@@ -20,11 +20,14 @@ class ClusteringTimelineGenerator:
         clip_sents=5,
         key_to_model=None,
         unique_dates=True,
+        plug_page=False,
+        plug_taxo=False,
     ):
-
+        self.plug_page = plug_page
+        self.plug_taxo = plug_taxo
         self.clusterer = clusterer or TemporalMarkovClusterer()
         self.cluster_ranker = cluster_ranker or ClusterDateMentionCountRanker()
-        self.summarizer = summarizer or summarizers.CentroidOpt()
+        self.summarizer = summarizer or summarizers.CentroidOpt(plug=self.plug_page)
         self.key_to_model = key_to_model
         self.unique_dates = unique_dates
         self.clip_sents = clip_sents
@@ -51,7 +54,9 @@ class ClusteringTimelineGenerator:
                 c.time = c.earliest_pub_time()
 
         print("ranking clusters...")
-        ranked_clusters = self.cluster_ranker.rank(clusters, collection)
+        ranked_clusters = self.cluster_ranker.rank(
+            clusters, collection, plug=self.plug_page
+        )
 
         print("vectorizing sentences...")
         raw_sents = [
@@ -116,6 +121,13 @@ class ClusteringTimelineGenerator:
             t = datetime.datetime(d.year, d.month, d.day)
             timeline.append((t, summary))
         timeline.sort(key=lambda x: x[0])
+        if self.plug_taxo:
+            distances = plugin.taxostat_distance(timeline, 4)
+            timeline = [
+                timeline[i]
+                for i, dist in enumerate(distances)
+                if dist <= self.plug_taxo
+            ]
 
         return data.Timeline(timeline)
 
@@ -163,6 +175,23 @@ class Cluster:
         else:
             return None
 
+    def most_mentioned_time_with_influence_rank(self, page_weight=1.0):
+        count_dict = {}
+
+        for a in self.articles:
+            for s in a.sentences:
+                if s.time and s.time_level == "d":
+                    count, page_sum = count_dict.get(s.time, (0, 0))
+                    count_dict[s.time] = (count + 1, page_sum + int(s.article_page))
+        count_dict = {
+            key: (tuple_[0], tuple_[1] / tuple_[0])
+            for key, tuple_ in count_dict.items()
+        }
+        if count_dict:  # equals to "if len(mentioned_times) != 0:"
+            return plugin.get_combined_1st_rank(count_dict, page_weight)
+        else:
+            return None
+
     def update_centroid(self):
         X = sparse.vstack(self.vectors)
         self.centroid = sparse.csr_matrix.mean(X, axis=0)
@@ -194,7 +223,6 @@ class OnlineClusterer(Clusterer):
 
         for t, articles in collection.time_batches():
             for a in articles:
-
                 # calculate similarity between article and all clusters
                 x = id_to_vector[a.id]
                 cluster_sims = []
@@ -322,17 +350,30 @@ class TemporalMarkovClusterer(Clusterer):
 
 
 class ClusterRanker:
-    def rank(self, clusters, collection, vectorizer):
+    def rank(self, clusters, collection, vectorizer, plug):
         raise NotImplementedError
 
 
 class ClusterSizeRanker(ClusterRanker):
-    def rank(self, clusters, collection=None, vectorizer=None):
-        return sorted(clusters, key=len, reverse=True)
+    def rank(self, clusters, collection=None, vectorizer=None, plug=False):
+        if plug:
+            count_dict = {
+                i: (
+                    len(cluster),
+                    plugin.get_page_sum_from_cluster(cluster) / len(cluster),
+                )
+                for i, cluster in enumerate(clusters)
+            }
+            ranked = plugin.get_combined_1st_rank(
+                count_dict, page_weight=plug, output_one=False
+            )
+            return [clusters[i] for i, _ in ranked]
+        else:
+            return sorted(clusters, key=len, reverse=True)
 
 
 class ClusterDateMentionCountRanker(ClusterRanker):
-    def rank(self, clusters, collection=None, vectorizer=None):
+    def rank(self, clusters, collection=None, vectorizer=None, plug=False):
         date_to_count = collections.defaultdict(int)
         for a in collection.articles():
             for s in a.sentences:
@@ -343,14 +384,32 @@ class ClusterDateMentionCountRanker(ClusterRanker):
         clusters = sorted(clusters, reverse=True, key=len)
 
         def get_count(c):
-            t = c.most_mentioned_time()
+            if plug:
+                t = c.most_mentioned_time_with_influence_rank(plug)
+            else:
+                t = c.most_mentioned_time()
             if t:
                 return date_to_count[t.date()]
             else:
                 return 0
 
-        clusters = sorted(clusters, reverse=True, key=get_count)
-        return sorted(clusters, key=len, reverse=True)
+        clusters = sorted(
+            clusters, reverse=True, key=get_count
+        )  # to give each cluster a specific date
+        if plug:
+            count_dict = {
+                i: (
+                    len(cluster),
+                    plugin.get_page_sum_from_cluster(cluster) / len(cluster),
+                )
+                for i, cluster in enumerate(clusters)
+            }
+            ranked = plugin.get_combined_1st_rank(
+                count_dict, page_weight=plug, output_one=False
+            )
+            return [clusters[i] for i, _ in ranked]
+        else:
+            return sorted(clusters, key=len, reverse=True)
 
 
 #

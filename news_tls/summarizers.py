@@ -3,19 +3,19 @@ from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from sklearn.cluster import MiniBatchKMeans
+from news_tls import plugin
 
 
 class Summarizer:
-
     def summarize(self, sents, k, vectorizer, filters=None):
         raise NotImplementedError
 
 
 class TextRank(Summarizer):
-
-    def __init__(self, max_sim=0.9999):
-        self.name = 'TextRank Summarizer'
+    def __init__(self, max_sim=0.9999, plug=False):
+        self.name = "TextRank Summarizer"
         self.max_sim = max_sim
+        self.plug = plug
 
     def score_sentences(self, X):
         S = cosine_similarity(X)
@@ -25,7 +25,7 @@ class TextRank(Summarizer):
         for i in range(S.shape[0]):
             for j in range(S.shape[0]):
                 graph.add_edge(nodes[i], nodes[j], weight=S[i, j])
-        pagerank = nx.pagerank(graph, weight='weight')
+        pagerank = nx.pagerank(graph, weight="weight")
         scores = [pagerank[i] for i in nodes]
         return scores
 
@@ -39,7 +39,14 @@ class TextRank(Summarizer):
         scores = self.score_sentences(X)
 
         indices = list(range(len(sents)))
-        ranked = sorted(zip(indices, scores), key=lambda x: x[1], reverse=True)
+        if self.plug:
+            sent_pages = [int(s.article_page) for s in sents]
+            count_dict = {i: (scores[i], sent_pages[i]) for i in indices}
+            ranked = plugin.get_combined_1st_rank(
+                count_dict, page_weight=self.plug, output_one=False
+            )
+        else:
+            ranked = sorted(zip(indices, scores), key=lambda x: x[1], reverse=True)
 
         summary_sents = []
         summary_vectors = []
@@ -66,10 +73,10 @@ class TextRank(Summarizer):
 
 
 class CentroidRank(Summarizer):
-
-    def __init__(self,  max_sim=0.9999):
-        self.name = 'Sentence-Centroid Summarizer'
+    def __init__(self, max_sim=0.9999, plug=False):
+        self.name = "Sentence-Centroid Summarizer"
         self.max_sim = max_sim
+        self.plug = plug
 
     def score_sentences(self, X):
         Xsum = sparse.csr_matrix(X.sum(0))
@@ -79,6 +86,7 @@ class CentroidRank(Summarizer):
 
     def summarize(self, sents, k, vectorizer, filter=None):
         raw_sents = [s.raw for s in sents]
+
         try:
             X = vectorizer.transform(raw_sents)
             for i, s in enumerate(sents):
@@ -88,7 +96,15 @@ class CentroidRank(Summarizer):
 
         scores = self.score_sentences(X)
         indices = list(range(len(sents)))
-        ranked = sorted(zip(indices, scores), key=lambda x: x[1], reverse=True)
+
+        if self.plug:
+            sent_pages = [int(s.article_page) for s in sents]
+            count_dict = {i: (scores[i], sent_pages[i]) for i in indices}
+            ranked = plugin.get_combined_1st_rank(
+                count_dict, page_weight=self.plug, output_one=False
+            )
+        else:
+            ranked = sorted(zip(indices, scores), key=lambda x: x[1], reverse=True)
 
         summary_sents = []
         summary_vectors = []
@@ -115,10 +131,10 @@ class CentroidRank(Summarizer):
 
 
 class CentroidOpt(Summarizer):
-
-    def __init__(self, max_sim=0.9999):
-        self.name = 'Summary-Centroid Summarizer'
+    def __init__(self, max_sim=0.9999, plug=False):
+        self.name = "Summary-Centroid Summarizer"
         self.max_sim = max_sim
+        self.plug = plug
 
     def optimise(self, centroid, X, sents, k, filter):
         remaining = set(range(len(sents)))
@@ -138,8 +154,18 @@ class CentroidOpt(Summarizer):
                 score = cosine_similarity(new_summary_vector, centroid)[0, 0]
                 i_to_score[i] = score
 
-            ranked = sorted(i_to_score.items(), key=lambda x: x[1], reverse=True)
-            for i, score in ranked:
+            if self.plug:
+                sent_pages = [int(s.article_page) for s in sents]
+                count_dict = {
+                    i_score[0]: (i_score[1], sent_pages[i_score[0]])
+                    for i_score in i_to_score.items()
+                }
+                ranked = plugin.get_combined_1st_rank(
+                    count_dict, page_weight=self.plug, output_one=False
+                )
+            else:
+                ranked = sorted(i_to_score.items(), key=lambda x: x[1], reverse=True)
+            for i, _ in ranked:
                 s = sents[i]
                 remaining.remove(i)
                 if filter and not filter(s):
@@ -179,11 +205,13 @@ class SubmodularSummarizer(Summarizer):
     a submodular function.
     The function models the coverage and diversity of the sentence combination.
     """
-    def __init__(self, a=5, div_weight=6, cluster_factor=0.2):
-        self.name = 'Submodular Summarizer'
+
+    def __init__(self, a=5, div_weight=6, cluster_factor=0.2, plug=False):
+        self.name = "Submodular Summarizer"
         self.a = a
         self.div_weight = div_weight
         self.cluster_factor = cluster_factor
+        self.plug = plug
 
     def cluster_sentences(self, X):
         n = X.shape[0]
@@ -195,11 +223,9 @@ class SubmodularSummarizer(Summarizer):
         i_to_label = dict((i, l) for i, l in enumerate(labels))
         return i_to_label
 
-    def compute_summary_coverage(self,
-                                 alpha,
-                                 summary_indices,
-                                 sent_coverages,
-                                 pairwise_sims):
+    def compute_summary_coverage(
+        self, alpha, summary_indices, sent_coverages, pairwise_sims
+    ):
         cov = 0
         for i, i_generic_cov in enumerate(sent_coverages):
             i_summary_cov = sum([pairwise_sims[i, j] for j in summary_indices])
@@ -207,10 +233,7 @@ class SubmodularSummarizer(Summarizer):
             cov += i_cov
         return cov
 
-    def compute_summary_diversity(self,
-                                  summary_indices,
-                                  ix_to_label,
-                                  avg_sent_sims):
+    def compute_summary_diversity(self, summary_indices, ix_to_label, avg_sent_sims):
 
         cluster_to_ixs = collections.defaultdict(list)
         for i in summary_indices:
@@ -223,14 +246,16 @@ class SubmodularSummarizer(Summarizer):
             div += cluster_score
         return div
 
-    def optimise(self,
-                 sents,
-                 k,
-                 filter,
-                 ix_to_label,
-                 pairwise_sims,
-                 sent_coverages,
-                 avg_sent_sims):
+    def optimise(
+        self,
+        sents,
+        k,
+        filter,
+        ix_to_label,
+        pairwise_sims,
+        sent_coverages,
+        avg_sent_sims,
+    ):
 
         alpha = self.a / len(sents)
         remaining = set(range(len(sents)))
@@ -242,13 +267,25 @@ class SubmodularSummarizer(Summarizer):
             for i in remaining:
                 summary_indices = selected + [i]
                 cov = self.compute_summary_coverage(
-                    alpha, summary_indices, sent_coverages, pairwise_sims)
+                    alpha, summary_indices, sent_coverages, pairwise_sims
+                )
                 div = self.compute_summary_diversity(
-                    summary_indices, ix_to_label, avg_sent_sims)
+                    summary_indices, ix_to_label, avg_sent_sims
+                )
                 score = cov + self.div_weight * div
                 i_to_score[i] = score
 
-            ranked = sorted(i_to_score.items(), key=lambda x: x[1], reverse=True)
+            if self.plug:
+                sent_pages = [int(s.article_page) for s in sents]
+                count_dict = {
+                    i_score[0]: (i_score[1], sent_pages[i_score[0]])
+                    for i_score in i_to_score.items()
+                }
+                ranked = plugin.get_combined_1st_rank(
+                    count_dict, page_weight=self.plug, output_one=False
+                )
+            else:
+                ranked = sorted(i_to_score.items(), key=lambda x: x[1], reverse=True)
             for i, score in ranked:
                 s = sents[i]
                 remaining.remove(i)
@@ -273,8 +310,7 @@ class SubmodularSummarizer(Summarizer):
         avg_sent_sims = sent_coverages / len(sents)
 
         selected = self.optimise(
-            sents, k, filter, ix_to_label,
-            pairwise_sims, sent_coverages, avg_sent_sims
+            sents, k, filter, ix_to_label, pairwise_sims, sent_coverages, avg_sent_sims
         )
 
         summary = [sents[i].raw for i in selected]
