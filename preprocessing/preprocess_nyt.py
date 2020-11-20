@@ -24,7 +24,8 @@ def main(args):
     keyword = args.keywords.split(",")
     keywords = set(keyword)
     topic_name = args.keywords.replace(" ", "_") + "_%s" % args.mode
-    os.mkdir(args.dataset_dir + "/%s" % topic_name)
+    if not os.path.exists(args.dataset_dir + "/%s" % topic_name):
+        os.mkdir(args.dataset_dir + "/%s" % topic_name)
     with open(args.dataset_dir + "/%s/keywords.json" % topic_name, "w") as f:
         f.write(json.dumps(keyword))
     file = jsonlines.open(args.dataset_dir + "/%s/articles.jsonl" % topic_name, "w")

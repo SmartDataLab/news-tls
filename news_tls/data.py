@@ -267,7 +267,7 @@ class Dataset:
         self.collections = self._load_collections()
 
     def _get_topics(self):
-        return sorted(os.listdir(self.path))
+        return sorted([x for x in os.listdir(self.path) if x[0] != "."])
 
     def _load_collections(self):
         collections = []

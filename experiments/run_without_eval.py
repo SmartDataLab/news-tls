@@ -23,6 +23,7 @@ def stats_and_save(timeline, args, topic):
         {
             "researcher": args.researcher,
             "topic": topic,
+            "timeline": timeline.to_dict(),
             "record_time": time.time(),
             "taxo_distance": taxo_distance,
             "taxo_purity": taxo_purity,
