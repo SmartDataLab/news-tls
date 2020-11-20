@@ -99,7 +99,7 @@ class DatewiseTimelineGenerator:
                     (
                         time,
                         [
-                            "%s : %s : %s :"
+                            "%s : %s : %s : "
                             % (
                                 d_sents[idx].article_id,
                                 d_sents[idx].article_taxo,
@@ -136,7 +136,7 @@ class DateRanker:
 
 
 class RandomDateRanker(DateRanker):
-    def rank_dates(self, collection):
+    def rank_dates(self, collection, plug=False):
         dates = [a.time.date() for a in collection.articles()]
         random.shuffle(dates)
         return dates
@@ -173,6 +173,7 @@ class PubCountDateRanker(DateRanker):
         if plug:
             pages_to_count = collections.defaultdict(int)
         for a in collection.articles():
+            d = a.time.date()
             date_to_count[d] += 1
             if plug:
                 pages_to_count[d] += a.page

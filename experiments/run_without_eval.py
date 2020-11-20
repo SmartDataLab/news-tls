@@ -2,9 +2,44 @@ import argparse
 from pathlib import Path
 from news_tls import utils, data, datewise, clust, summarizers, plugin
 from pprint import pprint
+from pymongo import MongoClient
+import time
+
+CONN = MongoClient("localhost")
+DB = CONN["news-tls"]
+COLLECTION = DB["log"]
 
 
-def run(tls_model, dataset, outpath):
+def stats_and_save(timeline, args, topic):
+    taxo_distance = plugin.taxostat_distance(timeline.to_dict(), 4)
+    print("taxo_distance", taxo_distance)
+    taxo_purity = sum(taxo_distance) / len(taxo_distance)
+    print("taxo_purity: %s" % taxo_purity)
+    pages = plugin.get_timeline_pages(timeline.to_dict())
+    print("pages: ", pages)
+    headline_index = sum(pages) / len(pages)
+    print("headline_index: %s" % headline_index)
+    COLLECTION.insert_one(
+        {
+            "researcher": args.researcher,
+            "topic": topic,
+            "record_time": time.time(),
+            "taxo_distance": taxo_distance,
+            "taxo_purity": taxo_purity,
+            "pages": pages,
+            "headline_index": headline_index,
+            "method": args.method,
+            "plug_page": args.plug_page,
+            "plug_taxo": args.plug_taxo,
+            "clust_ranker": args.clust_ranker,
+            "date_ranker": args.date_ranker,
+            "sent_collector": args.sent_collector,
+            "summarizer": args.summarizer,
+        }
+    )
+
+
+def run(tls_model, dataset, outpath, args):
 
     n_topics = len(dataset.collections)
     outputs = []
@@ -27,6 +62,7 @@ def run(tls_model, dataset, outpath):
         print("*** TIMELINE ***")
         utils.print_tl(timeline)
 
+        stats_and_save(timeline, args, topic)
         outputs.append(timeline.to_dict())
 
     if outpath:
@@ -79,7 +115,7 @@ def main(args):
     else:
         raise ValueError(f"Method not found: {args.method}")
 
-    run(system, dataset, args.output)
+    run(system, dataset, args.output, args)
 
 
 CLUST_RANKERS = {
@@ -109,6 +145,7 @@ SENT_COLLECTORS = {
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--researcher", default="Anonymous", required=True)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--method", required=True)
     parser.add_argument(

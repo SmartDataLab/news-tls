@@ -23,7 +23,7 @@ def get_clean_words_set_from_abstract(abstract):
 def main(args):
     keyword = args.keywords.split(",")
     keywords = set(keyword)
-    topic_name = args.keywords.replace(" ", "_")
+    topic_name = args.keywords.replace(" ", "_") + "_%s" % args.mode
     os.mkdir(args.dataset_dir + "/%s" % topic_name)
     with open(args.dataset_dir + "/%s/keywords.json" % topic_name, "w") as f:
         f.write(json.dumps(keyword))

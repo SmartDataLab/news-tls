@@ -43,7 +43,10 @@ def taxostat_distance(timeline, depth) -> list:
     return: list,每一个时间节点距离基准taxonomic classifier的平均距离
     """
     # 取出raw_taxostr
-    raw_taxostr_lst = [curr_day[1][0].split(" : ")[1] for curr_day in timeline]
+    raw_taxostr_lst = []
+
+    for curr_day in timeline:
+        raw_taxostr_lst.append(curr_day[1][0].split(" : ")[1])
     # 划分taxostr
     taxostr_lst = [raw_taxostr.split("|") for raw_taxostr in raw_taxostr_lst]
     # taxostr分段
@@ -74,3 +77,7 @@ def taxostat_distance(timeline, depth) -> list:
         taxo_distance_lst.append(sum(curr_scores) * 1.0 / len(taxo_unit))
 
     return taxo_distance_lst
+
+
+def get_timeline_pages(timeline):
+    return [float(curr_day[1][0].split(" : ")[2]) for curr_day in timeline]
