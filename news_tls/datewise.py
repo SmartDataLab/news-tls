@@ -90,8 +90,13 @@ class DatewiseTimelineGenerator:
             if len(summary) == 0:
                 summary = [""]
                 sent_id = None
+                sent_page = None
+                sent_taxo = None
             else:
                 idx = [sent.raw for sent in d_sents].index(summary[0])
+                sent_id = d_sents[idx].article_id
+                sent_page = d_sents[idx].article_page
+                sent_taxo = d_sents[idx].article_taxo
 
             if summary:
                 time = datetime.datetime(d.year, d.month, d.day)
@@ -101,9 +106,9 @@ class DatewiseTimelineGenerator:
                         [
                             "%s : %s : %s : "
                             % (
-                                d_sents[idx].article_id,
-                                d_sents[idx].article_taxo,
-                                d_sents[idx].article_page,
+                                sent_id,
+                                sent_taxo,
+                                sent_page,
                             )
                             + summary[0]
                         ],
