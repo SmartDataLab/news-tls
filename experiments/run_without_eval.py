@@ -13,11 +13,13 @@ COLLECTION = DB["log"]
 def stats_and_save(timeline, args, topic):
     taxo_distance = plugin.taxostat_distance(timeline.to_dict(), 4)
     print("taxo_distance", taxo_distance)
-    taxo_purity = sum(taxo_distance) / len(taxo_distance)
+    taxo_purity = (
+        sum(taxo_distance) / len(taxo_distance) if len(taxo_distance) > 0 else None
+    )
     print("taxo_purity: %s" % taxo_purity)
     pages = plugin.get_timeline_pages(timeline.to_dict())
     print("pages: ", pages)
-    headline_index = sum(pages) / len(pages)
+    headline_index = sum(pages) / len(pages) if len(pages) > 0 else None
     print("headline_index: %s" % headline_index)
     COLLECTION.insert_one(
         {
