@@ -54,11 +54,14 @@ def taxostat_distance(timeline, depth) -> list:
 
     # 计算距离
     # 以出现频次最高的taxo为基准
-    base_taxo = (
-        pd.value_counts([taxostr for unit in taxostr_lst for taxostr in unit])
-        .index[0]
-        .split("/")
-    )
+    try:
+        base_taxo = (
+            pd.value_counts([taxostr for unit in taxostr_lst for taxostr in unit])
+            .index[0]
+            .split("/")
+        )
+    except:
+        return [0.0]
     base_len = len(base_taxo)
     # 计算每个时间节点内taxo的平均距离
     taxo_distance_lst = []
