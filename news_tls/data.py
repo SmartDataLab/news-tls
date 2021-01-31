@@ -27,6 +27,10 @@ def load_article(article_dict):
     fix_dependency_heads(sentences)
     time = arrow.get(article_dict["time"]).datetime
     time = time.replace(tzinfo=None)
+    if "taxo" not in article_dict.keys():
+        article_dict["taxo"] = None
+    if "page" not in article_dict.keys():
+        article_dict["page"] = None
 
     return Article(
         article_dict["title"],
