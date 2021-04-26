@@ -6,7 +6,7 @@ from scipy import sparse
 from sklearn.preprocessing import normalize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from news_tls import data, utils, summarizers
+from news_tls import data, utils, summarizers, plugin
 
 
 random.seed(42)
@@ -21,13 +21,18 @@ class DatewiseTimelineGenerator:
         clip_sents=5,
         pub_end=2,
         key_to_model=None,
+        plug_page=False,
+        plug_taxo=False,
     ):
-
-        self.date_ranker = date_ranker or MentionCountDateRanker()
+        self.plug_page = plug_page
+        self.plug_taxo = plug_taxo
+        self.date_ranker = (
+            date_ranker or MentionCountDateRanker()
+        )  # if date_ranker is None, use new instance
         self.sent_collector = sent_collector or PM_Mean_SentenceCollector(
             clip_sents, pub_end
         )
-        self.summarizer = summarizer or summarizers.CentroidOpt()
+        self.summarizer = summarizer or summarizers.CentroidOpt(plug=self.plug_page)
         self.key_to_model = key_to_model
 
     def predict(
@@ -42,13 +47,10 @@ class DatewiseTimelineGenerator:
     ):
         print("vectorizer...")
         vectorizer = TfidfVectorizer(stop_words="english", lowercase=True)
-        fit_input = [s.raw for a in collection.articles() for s in a.sentences]
-        # print(fit_input)
-        # TODO: print and get a functions for BertTLS
-        vectorizer.fit(fit_input)
+        vectorizer.fit([s.raw for a in collection.articles() for s in a.sentences])
 
         print("date ranking...")
-        ranked_dates = self.date_ranker.rank_dates(collection)
+        ranked_dates = self.date_ranker.rank_dates(collection, plug=self.plug_page)
 
         start = collection.start.date()
         end = collection.end.date()
@@ -85,12 +87,38 @@ class DatewiseTimelineGenerator:
             summary = self.summarizer.summarize(
                 d_sents, k=max_summary_sents, vectorizer=vectorizer, filter=sent_filter
             )
+            if len(summary) == 0:
+                summary = [""]
+                sent_id = None
+            else:
+                idx = [sent.raw for sent in d_sents].index(summary[0])
+
             if summary:
                 time = datetime.datetime(d.year, d.month, d.day)
-                timeline.append((time, summary))
+                timeline.append(
+                    (
+                        time,
+                        [
+                            "%s : %s : %s : "
+                            % (
+                                d_sents[idx].article_id,
+                                d_sents[idx].article_taxo,
+                                d_sents[idx].article_page,
+                            )
+                            + summary[0]
+                        ],
+                    )
+                )
                 l += 1
 
         timeline.sort(key=lambda x: x[0])
+        if self.plug_taxo:
+            distances = plugin.taxostat_distance(timeline, 4)
+            timeline = [
+                timeline[i]
+                for i, dist in enumerate(distances)
+                if dist <= self.plug_taxo
+            ]
         return data.Timeline(timeline)
 
     def load(self, ignored_topics):
@@ -108,30 +136,57 @@ class DateRanker:
 
 
 class RandomDateRanker(DateRanker):
-    def rank_dates(self, collection):
+    def rank_dates(self, collection, plug=False):
         dates = [a.time.date() for a in collection.articles()]
         random.shuffle(dates)
         return dates
 
 
 class MentionCountDateRanker(DateRanker):
-    def rank_dates(self, collection):
+    def rank_dates(self, collection, plug=False):
         date_to_count = collections.defaultdict(int)
+        if plug:
+            pages_to_count = collections.defaultdict(int)
         for a in collection.articles():
             for s in a.sentences:
                 d = s.get_date()
-                # note: data.py Sentence staticmethod
                 if d:
                     date_to_count[d] += 1
-        ranked = sorted(date_to_count.items(), key=lambda x: x[1], reverse=True)
+                    if plug:
+                        pages_to_count[d] += a.page
+        if plug:
+            count_dict = {
+                d: (count, pages_to_count[d] / count)
+                for d, count in date_to_count.items()
+            }
+            ranked = plugin.get_combined_1st_rank(
+                count_dict, page_weight=plug, output_one=False
+            )
+        else:
+            ranked = sorted(date_to_count.items(), key=lambda x: x[1], reverse=True)
         return [d for d, _ in ranked]
 
 
 class PubCountDateRanker(DateRanker):
-    def rank_dates(self, collection):
-        dates = [a.time.date() for a in collection.articles()]
-        counts = collections.Counter(dates)
-        ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    def rank_dates(self, collection, plug=False):
+        date_to_count = collections.defaultdict(int)
+        if plug:
+            pages_to_count = collections.defaultdict(int)
+        for a in collection.articles():
+            d = a.time.date()
+            date_to_count[d] += 1
+            if plug:
+                pages_to_count[d] += a.page
+        if plug:
+            count_dict = {
+                d: (count, pages_to_count[d] / count)
+                for d, count in date_to_count.items()
+            }
+            ranked = plugin.get_combined_1st_rank(
+                count_dict, page_weight=plug, output_one=False
+            )
+        else:
+            ranked = sorted(date_to_count.items(), key=lambda x: x[1], reverse=True)
         return [d for d, _ in ranked]
 
 
@@ -142,20 +197,30 @@ class SupervisedDateRanker(DateRanker):
         if method not in ["classification", "regression"]:
             raise ValueError("method must be classification or regression")
 
-    def rank_dates(self, collection):
-        dates, X = self.extract_features(collection)
+    def rank_dates(self, collection, plug=False):
+        if plug:
+            dates, X, pages_to_count = self.extract_features(collection, plug)
+        else:
+            dates, X = self.extract_features(collection)
         X = normalize(X, norm="l2", axis=0)
         if self.method == "classification":
             Y = [y[1] for y in self.model["model"].predict_proba(X)]
         else:
             Y = self.model["model"].predict(X)
-        scored = sorted(zip(dates, Y), key=lambda x: x[1], reverse=True)
-        ranked = [x[0] for x in scored]
-        # for d, score in scored[:16]:
-        #     print(d, score)
+        if plug:
+            count_dict = {d: (Y[i], pages_to_count[d]) for i, d in enumerate(dates)}
+            ranked = [
+                x[0]
+                for x in plugin.get_combined_1st_rank(
+                    count_dict, page_weight=plug, output_one=False
+                )
+            ]
+        else:
+            scored = sorted(zip(dates, Y), key=lambda x: x[1], reverse=True)
+            ranked = [x[0] for x in scored]
         return ranked
 
-    def extract_features(self, collection):
+    def extract_features(self, collection, plug=False):
         date_to_stats = self.extract_date_statistics(collection)
         dates = sorted(date_to_stats)
         X = []
@@ -171,7 +236,17 @@ class SupervisedDateRanker(DateRanker):
             ]
             X.append(np.array(feats))
         X = np.array(X)
-        return dates, X
+        if plug:
+            return (
+                dates,
+                X,
+                {
+                    d: date_to_stats[d]["pages_total"] / date_to_stats[d]["sents_total"]
+                    for d in dates
+                },
+            )
+        else:
+            return dates, X
 
     def extract_date_statistics(self, collection):
         default = lambda: {
@@ -184,6 +259,7 @@ class SupervisedDateRanker(DateRanker):
             "docs_before": 0,
             "docs_after": 0,
             "docs_published": 0,
+            "pages_total": 0,
         }
         date_to_feats = collections.defaultdict(default)
         for a in collection.articles():
@@ -193,6 +269,7 @@ class SupervisedDateRanker(DateRanker):
                 if s.time and s.time_level == "d":
                     d = s.time.date()
                     date_to_feats[d]["sents_total"] += 1
+                    date_to_feats[d]["pages_total"] += s.article_page
                     if d < pub_date:
                         date_to_feats[d]["sents_before"] += 1
                     elif d > pub_date:
@@ -255,7 +332,7 @@ class P_SentenceCollector:
 
 
 class PM_All_SentenceCollector:
-    def __init__(self, clip_sents=5, pub_end=2):
+    def __init__(self, clip_sents=2, pub_end=2):
         self.clip_sents = clip_sents
         self.pub_end = pub_end
 

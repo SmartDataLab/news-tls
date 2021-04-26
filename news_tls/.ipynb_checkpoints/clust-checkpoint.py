@@ -80,19 +80,30 @@ class ClusteringTimelineGenerator:
         ref_m = max_dates * max_summary_sents
 
         date_to_summary = collections.defaultdict(list)
+
         for c in ranked_clusters:
 
             date = c.time.date()
             c_sents = self._select_sents_from_cluster(c)
-            # print("C", date, len(c_sents), "M", sys_m, "L", sys_l)
+
             summary = self.summarizer.summarize(
                 c_sents, k=max_summary_sents, vectorizer=vectorizer, filter=sent_filter
             )
 
             if summary:
+                c_sents_raw = [s.raw for s in c_sents]
+                idx = c_sents_raw.index(summary[0])
                 if self.unique_dates and date in date_to_summary:
                     continue
-                date_to_summary[date] += summary
+                date_to_summary[date] += [
+                    "%s : %s : %s : "
+                    % (
+                        c_sents[idx].article_id,
+                        c_sents[idx].article_taxo,
+                        c_sents[idx].article_page,
+                    )
+                    + summary[0]
+                ]
                 sys_m += len(summary)
                 if self.unique_dates:
                     sys_l += 1
@@ -114,6 +125,7 @@ class ClusteringTimelineGenerator:
             pub_d = a.time.date()
             for s in a.sentences[: self.clip_sents]:
                 sents.append(s)
+
         return sents
 
     def load(self, ignored_topics):
@@ -150,6 +162,21 @@ class Cluster:
             return collections.Counter(mentioned_times).most_common()[0][0]
         else:
             return None
+    
+    def most_mentioned_time_with_influence_rank(self):
+        count_dict = {}
+        rank_tuples = 
+        for a in self.articles:
+            for s in a.sentences:
+                if s.time and s.time_level == "d":
+                    count, page_sum = count_dict.get(s.time,(0,0))
+                    count_dict[s.time] = (count+1,page_sum+int(s.article_page))
+        if count_dict: # equals to "if len(mentioned_times) != 0:"  
+            for 
+            return collections.Counter(mentioned_times).most_common()[0][0]
+        else:
+            return None
+
 
     def update_centroid(self):
         X = sparse.vstack(self.vectors)
@@ -220,31 +247,17 @@ class OnlineClusterer(Clusterer):
         return clusters
 
 
-def get_idf_info(x):
-    data = x.data
-    return [len(data), data.mean(), data.std(), data.min(), data.max()]
-
-
-# TODO and need test, avoid the zero situation
-
-
 class TemporalMarkovClusterer(Clusterer):
     def __init__(self, max_days=1):
         self.max_days = max_days
 
     def cluster(self, collection, vectorizer) -> List[Cluster]:
-        articles = []
-        for i, a in enumerate(collection.articles()):
-            a.id = i
-            articles.append(a)
+        articles = list(collection.articles())
         texts = ["{} {}".format(a.title, a.text) for a in articles]
         try:
             X = vectorizer.transform(texts)
         except:
             X = vectorizer.fit_transform(texts)
-        for i, a in enumerate(articles):
-            articles[i].idf_info = get_idf_info(X[i])
-            print(i, articles[i].idf_info)
 
         times = [a.time for a in articles]
 

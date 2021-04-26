@@ -27,6 +27,7 @@ def load_article(article_dict):
     fix_dependency_heads(sentences)
     time = arrow.get(article_dict["time"]).datetime
     time = time.replace(tzinfo=None)
+
     return Article(
         article_dict["title"],
         article_dict["text"],
@@ -34,6 +35,8 @@ def load_article(article_dict):
         article_dict["id"],
         sentences,
         title_sentence,
+        taxo=article_dict["taxo"],
+        page=article_dict["page"],
     )
 
 
@@ -127,6 +130,9 @@ class Sentence:
     def __init__(self, raw, tokens, pub_time, time, time_level, is_title=False):
         self.raw = raw
         self.tokens = tokens
+        self.article_id = None
+        self.article_taxo = None
+        self.article_page = None
         self.pub_time = pub_time
         self.time = time
         self.time_level = time_level
@@ -135,7 +141,6 @@ class Sentence:
     @staticmethod
     def get_time(tokens):
         for token in tokens:
-            # note: may loss information if one sentence has two date.
             if token.time:
                 return token.time
         return None
@@ -211,7 +216,16 @@ class Article:
     """
 
     def __init__(
-        self, title, text, time, id, sentences=None, title_sentence=None, vector=None
+        self,
+        title,
+        text,
+        time,
+        id,
+        sentences=None,
+        title_sentence=None,
+        vector=None,
+        taxo=None,
+        page=None,
     ):
         self.title = title
         self.text = text
@@ -220,7 +234,12 @@ class Article:
         self.sentences = sentences
         self.title_sentence = title_sentence
         self.vector = vector
-        self.idf_info = None
+        self.taxo = taxo
+        self.page = page
+        for i in range(len(self.sentences)):
+            self.sentences[i].article_id = self.id
+            self.sentences[i].article_taxo = self.taxo
+            self.sentences[i].article_page = self.page
 
     def to_dict(self):
 
@@ -233,6 +252,8 @@ class Article:
             "text": self.text,
             "time": str(self.time),
             "id": self.id,
+            "taxo": self.taxo,
+            "page": self.page,
             "sentences": [s.to_dict() for s in self.sentences],
             "title_sentence": title_sent_dict,
             "vector": self.vector,
