@@ -28,14 +28,8 @@ def run(tls_model, dataset, outpath):
         topic = collection.name
         times = [a.time for a in collection.articles()]
         # setting start, end, L, K manually instead of from ground-truth
-        try:
-            collection.start = min(times)
-        except:
-            collection.start = 0
-        try:
-            collection.end = max(times)
-        except:
-            collection.end = 0
+        collection.start = min(times)
+        collection.end = max(times)
         l = 8 # timeline length (dates)
         k = 1 # number of sentences in each summary
 

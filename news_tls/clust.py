@@ -4,13 +4,13 @@ import itertools
 import random
 import collections
 import markov_clustering as mc
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer#用来提取文本特征的
 from sklearn.metrics.pairwise import cosine_similarity
-from scipy import sparse
+from scipy import sparse  #sklearn.feature_extraction.text方法处理后的数据格式是scipy.sparse的，是稀疏矩阵
 from typing import List
 from news_tls import utils, data, plugin
 
-
+#生成时间线
 class ClusteringTimelineGenerator:
     def __init__(
         self,
@@ -43,61 +43,62 @@ class ClusteringTimelineGenerator:
         output_body_sents=True,
     ):
 
-        print("clustering articles...")
-        doc_vectorizer = TfidfVectorizer(lowercase=True, stop_words="english")
-        clusters = self.clusterer.cluster(collection, doc_vectorizer)
+        print("clustering articles...")#正在聚类文章……
+        doc_vectorizer = TfidfVectorizer(lowercase=True, stop_words="english")#这是定义了一个方法？
+        clusters = self.clusterer.cluster(collection, doc_vectorizer)#对对象进行聚类
 
-        print("assigning cluster times...")
+        print("assigning cluster times...")#正在聚类时间……
         for c in clusters:
-            c.time = c.most_mentioned_time()
+            c.time = c.most_mentioned_time()#把时间定义为最常被提起的时间
             if c.time is None:
-                c.time = c.earliest_pub_time()
+                c.time = c.earliest_pub_time()#如果没有最常被提起的时间：就定义为最早发布的时间
 
-        print("ranking clusters...")
+        print("ranking clusters...")#正在对聚类结果进行排序……
         ranked_clusters = self.cluster_ranker.rank(
             clusters, collection, plug=self.plug_page
-        )
+        )#讲道理有点看不懂，因为不知道数据是什么格式的
 
-        print("vectorizing sentences...")
+        print("vectorizing sentences...")#正在向量化句子（embedding?）
         raw_sents = [
             s.raw for a in collection.articles() for s in a.sentences[: self.clip_sents]
-        ]
-        vectorizer = TfidfVectorizer(lowercase=True, stop_words="english")
-        vectorizer.fit(raw_sents)
+        ]#我甚至没看到过这种语法，连续两个for是并列循环还是嵌套循环？#知道了，是嵌套循环，甚至是按语法的前后顺序循环的
+        vectorizer = TfidfVectorizer(lowercase=True, stop_words="english")#向量编码器
+        vectorizer.fit(raw_sents)#用raw_sents的方法还是数据去训练（拟合）向量编码器
 
-        def sent_filter(sent):
+        def sent_filter(sent):#在“预测”方法下面继续定义一个方法“传送过滤”？
             """
             Returns True if sentence is allowed to be in a summary.
-            """
-            lower = sent.raw.lower()
-            if not any([kw in lower for kw in collection.keywords]):
+            """#就是说如果这个句子被允许存在于摘要中就返回“True”。
+            lower = sent.raw.lower()#全变成小写字母，但是.raw是什么意思我看不懂？
+            if not any([kw in lower for kw in collection.keywords]):#如果一个都没有，就返回False
                 return False
-            elif not output_titles and sent.is_title:
+            elif not output_titles and sent.is_title:#如果？？并且？？，就返回False
                 return False
-            elif not output_body_sents and not sent.is_sent:
+            elif not output_body_sents and not sent.is_sent:#如果？？并且？？，就返回False
                 return False
-            else:
+            else:#剩余情况返回True
                 return True
+            #总的来说这个方法是用来根据sent信息进行筛选的，但是不知道是用来筛选什么的。
 
-        print("summarization...")
-        sys_l = 0
+        print("summarization...")#摘要……
+        sys_l = 0#生成两个不知道干嘛用的初始值
         sys_m = 0
         ref_m = max_dates * max_summary_sents
 
-        date_to_summary = collections.defaultdict(list)
+        date_to_summary = collections.defaultdict(list)#日期到摘要：
 
-        for c in ranked_clusters:
+        for c in ranked_clusters:#一个循环：对排好序的聚类结果进行循环
 
-            date = c.time.date()
-            c_sents = self._select_sents_from_cluster(c)
+            date = c.time.date()#这样我们知道了之前的聚类结果应该有一个属性叫做time.date()
+            c_sents = self._select_sents_from_cluster(c)#从聚类选择传送
 
             summary = self.summarizer.summarize(
                 c_sents, k=max_summary_sents, vectorizer=vectorizer, filter=sent_filter
-            )
+            )#摘要为根据数据格式产生的方法，根据下文来看，返回的是True/False结果。#但是根据下面if后面第二行来看，summary反而是一个可迭代的对象？#破案了，只要不确定为0或者空列表/元组，作为布尔值就是True（哪怕全是0的列表或者元组也认为是True）。
 
-            if summary:
-                c_sents_raw = [s.raw for s in c_sents]
-                idx = c_sents_raw.index(summary[0])
+            if summary:#如果确定摘要里要加这一部分：#那么这里summary应该是一个有可能为0但一般情况下不为空的一个
+                c_sents_raw = [s.raw for s in c_sents]#如果这里的raw也是“未经加工过”的意思：那么这句话就是把之前的c_sents列表用raw方法重构一下
+                idx = c_sents_raw.index(summary[0])#list.index()：#用于找到值等于给定值的第一个匹配项的索引。
                 if self.unique_dates and date in date_to_summary:
                     continue
                 date_to_summary[date] += [
@@ -143,7 +144,7 @@ class ClusteringTimelineGenerator:
     def load(self, ignored_topics):
         pass
 
-
+#聚类
 ################################# CLUSTERING ###################################
 
 
@@ -259,7 +260,7 @@ class OnlineClusterer(Clusterer):
 
         return clusters
 
-
+#但是我没找到聚类中心在哪里
 class TemporalMarkovClusterer(Clusterer):
     def __init__(self, max_days=1):
         self.max_days = max_days

@@ -274,6 +274,8 @@ class SupervisedDateRanker(DateRanker):
                 if s.time and s.time_level == "d":
                     d = s.time.date()
                     date_to_feats[d]["sents_total"] += 1
+                    if s.article_page==None:
+                        s.article_page=0
                     date_to_feats[d]["pages_total"] += s.article_page
                     if d < pub_date:
                         date_to_feats[d]["sents_before"] += 1

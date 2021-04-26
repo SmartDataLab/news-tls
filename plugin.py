@@ -92,7 +92,7 @@ def get_timeline_pages(timeline):
     pages = []
     for curr_day in timeline:
         page_str = curr_day[1][0].split(" : ")[2]
-        if page_str == None or page_str == 'None':
+        if page_str == None:
             page_str = "20.0"
         pages.append(float(page_str))
     return pages

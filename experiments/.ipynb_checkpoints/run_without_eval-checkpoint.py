@@ -1,23 +1,9 @@
-import sys
-
-class Logger(object):
-    def __init__(self, logFile ="Default.log"):
-        self.terminal = sys.stdout
-        self.log = open(logFile,'a')
- 
-    def write(self,message):
-        self.terminal.write(message)
-        self.log.write(message)
- 
-    def flush(self):
-        pass
- 
-sys.stdout = Logger("log.log") 
-
 import argparse
 from pathlib import Path
 from news_tls import utils, data, datewise, clust, summarizers
 from pprint import pprint
+
+
 
 def run(tls_model, dataset, outpath):
 
@@ -28,14 +14,8 @@ def run(tls_model, dataset, outpath):
         topic = collection.name
         times = [a.time for a in collection.articles()]
         # setting start, end, L, K manually instead of from ground-truth
-        try:
-            collection.start = min(times)
-        except:
-            collection.start = 0
-        try:
-            collection.end = max(times)
-        except:
-            collection.end = 0
+        collection.start = min(times)
+        collection.end = max(times)
         l = 8 # timeline length (dates)
         k = 1 # number of sentences in each summary
 
@@ -50,8 +30,9 @@ def run(tls_model, dataset, outpath):
         utils.print_tl(timeline)
 
         outputs.append(timeline.to_dict())
+
     if outpath:
-        utils.write_json(outputs,outpath)
+        utils.write_json(outputs, outpath)
 
 
 def main(args):
@@ -106,4 +87,3 @@ if __name__ == '__main__':
         help='model for date ranker')
     parser.add_argument('--output', default=None)
     main(parser.parse_args())
-
